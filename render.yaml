@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: yusuke-chatroom
+    runtime: node
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: CHAT_API_KEY
+        value: yusuke-chat-2026

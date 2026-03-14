@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>チームチャット</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, sans-serif; background: #1a1a2e; color: #eee; height: 100dvh; display: flex; flex-direction: column; }
+  #header { padding: 10px 16px; background: #16213e; border-bottom: 1px solid #333; display: flex; align-items: center; gap: 12px; }
+  #header h1 { font-size: 15px; flex: 1; }
+  #participants { display: flex; gap: 6px; flex-wrap: wrap; }
+  .badge { font-size: 11px; padding: 3px 8px; border-radius: 10px; background: #0f3460; }
+  .badge.yusuke { background: #0f3460; }
+  .badge.junior { background: #1a472a; }
+  .badge.brother { background: #4a1942; }
+  .badge.other { background: #333; }
+  #messages { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .msg { max-width: 82%; padding: 8px 12px; border-radius: 12px; line-height: 1.5; font-size: 14px; }
+  .msg.yusuke { align-self: flex-end; background: #0f3460; }
+  .msg.junior { align-self: flex-start; background: #1a472a; }
+  .msg.brother { align-self: flex-start; background: #4a1942; }
+  .msg.system { align-self: center; background: #222; font-size: 12px; opacity: 0.6; padding: 4px 10px; border-radius: 8px; }
+  .msg.other { align-self: flex-start; background: #333; }
+  .sender { font-size: 11px; opacity: 0.7; margin-bottom: 3px; }
+  .time { font-size: 10px; opacity: 0.5; margin-top: 3px; text-align: right; }
+  #input-area { display: flex; gap: 8px; padding: 10px 16px; background: #16213e; border-top: 1px solid #333; }
+  #input { flex: 1; padding: 10px 14px; border-radius: 20px; border: none; background: #0f3460; color: #eee; font-size: 14px; outline: none; }
+  #send { padding: 10px 18px; border-radius: 20px; border: none; background: #e94560; color: #fff; font-weight: bold; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="header">
+  <h1>💬 チームチャット</h1>
+  <div id="participants"></div>
+</div>
+<div id="messages"></div>
+<div id="input-area">
+  <input id="input" placeholder="メッセージを入力..." autocomplete="off" />
+  <button id="send">送信</button>
+</div>
+<script>
+const API_KEY = "yusuke-chat-2026";
+let lastTs = 0;
+
+function senderClass(sender) {
+  const s = (sender || "").toLowerCase();
+  if (s === "システム" || s === "system") return "system";
+  if (s.includes("ゆうすけ") || s.includes("yusuke")) return "yusuke";
+  if (s.includes("ジュニア") || s.includes("junior")) return "junior";
+  if (s.includes("ブラザー") || s.includes("brother")) return "brother";
+  return "other";
+}
+
+function fmt(ts) {
+  return new Date(ts).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+}
+
+function appendMsg(msg) {
+  const div = document.getElementById("messages");
+  const cls = senderClass(msg.sender);
+  const el = document.createElement("div");
+  el.className = `msg ${cls}`;
+  if (cls === "system") {
+    el.textContent = msg.content;
+  } else {
+    el.innerHTML = `<div class="sender">${msg.sender}</div>${msg.content.replace(/\n/g,"<br>")}<div class="time">${fmt(msg.created_at)}</div>`;
+  }
+  div.appendChild(el);
+  div.scrollTop = div.scrollHeight;
+  if (msg.created_at > lastTs) lastTs = msg.created_at;
+}
+
+async function poll() {
+  try {
+    const [msgRes, partRes] = await Promise.all([
+      fetch(`/messages?since=${lastTs}`),
+      fetch("/participants")
+    ]);
+    const msgs = await msgRes.json();
+    const parts = await partRes.json();
+    msgs.forEach(appendMsg);
+    const pd = document.getElementById("participants");
+    pd.innerHTML = parts.map(p =>
+      `<span class="badge ${senderClass(p.name)}">${p.name}</span>`
+    ).join("");
+  } catch {}
+}
+
+async function send() {
+  const input = document.getElementById("input");
+  const content = input.value.trim();
+  if (!content) return;
+  input.value = "";
+  await fetch("/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": API_KEY },
+    body: JSON.stringify({ sender: "ゆうすけ", content })
+  });
+  poll();
+}
+
+document.getElementById("send").onclick = send;
+document.getElementById("input").onkeydown = e => { if (e.key === "Enter") send(); };
+
+poll();
+setInterval(poll, 2000);
+</script>
+</body>
+</html>
