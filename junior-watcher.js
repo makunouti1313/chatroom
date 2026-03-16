@@ -25,6 +25,27 @@ const POLL_MS       = 15_000;
 const STATE_FILE    = join(__dirname, "junior-watcher-state.json");
 const LOCK_FILE     = join(__dirname, "junior-watcher.lock");
 
+// Discord webhook (.webhook.env から読む)
+const WEBHOOK_ENV = join(__dirname, "../.webhook.env");
+if (fs.existsSync(WEBHOOK_ENV)) {
+  fs.readFileSync(WEBHOOK_ENV, "utf8").split("\n").forEach(line => {
+    const [k, ...v] = line.split("=");
+    if (k?.trim()) process.env[k.trim()] = v.join("=").trim();
+  });
+}
+const DISCORD_WEBHOOK = process.env.DISCORD_WEBHOOK_URL;
+
+async function postToDiscord(content) {
+  if (!DISCORD_WEBHOOK) return;
+  try {
+    await fetch(DISCORD_WEBHOOK, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: content.slice(0, 2000) })
+    });
+  } catch {}
+}
+
 const SYSTEM_PROMPT = `あなたは「ジュニア」です。ゆうすけ専用のAIアシスタントです。
 
 【役割】
@@ -131,10 +152,16 @@ async function poll() {
     const newMsgs = await res.json();
 
     for (const msg of newMsgs) {
-      // ジュニア・システム・ブラザーの発言はスキップ
-      if (["ジュニア", "システム", "ブラザー"].includes(msg.sender)) {
+      // ジュニア・システムの発言はスキップ
+      // ブラザーの ! コマンドは実行する（通常発言はスキップ）
+      if (msg.sender === "ジュニア" || msg.sender === "システム") {
         if (msg.created_at > state.lastTs) state.lastTs = msg.created_at;
-        saveState(state); // 都度保存して重複処理を防ぐ
+        saveState(state);
+        continue;
+      }
+      if (msg.sender === "ブラザー" && !msg.content.trim().startsWith("!")) {
+        if (msg.created_at > state.lastTs) state.lastTs = msg.created_at;
+        saveState(state);
         continue;
       }
 
@@ -155,6 +182,10 @@ async function poll() {
         await postToChat(`実行中... (最大2分)`);
         const result = await runClaude(prompt);
         await postToChat(result);
+        // ブラザー経由（Discord）からの指示なら Discord にも結果を送る
+        if (msg.sender === "ブラザー") {
+          await postToDiscord(`**ジュニア実行結果:**\n${result}`);
+        }
         console.log(`→ 完了`);
       } else {
         // 通常会話 → Haiku
