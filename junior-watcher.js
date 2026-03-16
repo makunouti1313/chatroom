@@ -117,9 +117,11 @@ const DEFAULT_CWD = "C:\\Users\\merucari\\OneDrive\\デスクトップ\\samantha
 
 function runClaude(prompt, cwd = DEFAULT_CWD) {
   return new Promise((resolve) => {
-    const TIMEOUT = 120_000; // 2分
+    const TIMEOUT = 600_000; // 10分
+    const PROGRESS_INTERVAL = 60_000; // 1分ごとに進捗通知
     let output = "";
     let done = false;
+    let elapsed = 0;
 
     const child = spawn(
       "cmd.exe",
@@ -134,10 +136,19 @@ function runClaude(prompt, cwd = DEFAULT_CWD) {
       if (done) return;
       done = true;
       clearTimeout(timer);
+      clearInterval(progressInterval);
       try { child.kill(); } catch {}
       const result = output.trim() || `（出力なし: ${reason}）`;
       resolve(result.slice(0, 1500));
     };
+
+    // 1分ごとに「作業中...」を通知
+    const progressInterval = setInterval(() => {
+      elapsed += PROGRESS_INTERVAL;
+      if (!done) {
+        postToChat(`作業中... (${elapsed / 60000}分経過)`).catch(() => {});
+      }
+    }, PROGRESS_INTERVAL);
 
     child.on("close", () => finish("exit"));
     child.on("error", err => { output += `エラー: ${err.message}`; finish("error"); });
